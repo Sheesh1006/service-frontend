@@ -1,0 +1,10 @@
+version: '3'
+services:
+    web:
+        build:
+            context: .
+        ports:
+            - "9999:8000"
+        restart: unless-stopped
+
+
