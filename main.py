@@ -4,11 +4,28 @@ import threading
 import os
 import json
 from urllib.parse import unquote, urlparse
+import grpc
+from backend_service.backend_service_pb2_grpc import BackendServiceStub
+from backend_service.backend_service_pb2 import (
+    GetNotesRequest, GetNotesResponse
+)
+from munch import munchify
+from yaml import safe_load
+
 
 PORT = 8000
 DIRECTORY = "."
 
+def createClient() -> BackendServiceStub:
+    with open('config.yml') as cfg:
+        config = munchify(safe_load(cfg))
+    channel = grpc.insecure_channel(config.backend_client.addr)
+    stub = BackendServiceStub(channel)
+    return stub
+
 class MyHandler(SimpleHTTPRequestHandler):
+    stub = createClient()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
     
@@ -27,6 +44,9 @@ class MyHandler(SimpleHTTPRequestHandler):
         if self.path == '/api/process':
             content_length = int(self.headers['Content-Length'])
             post_data = json.loads(self.rfile.read(content_length).decode('utf-8'))
+
+            request = GetNotesRequest(video=post_data, presentation="")
+            response: GetNotesResponse = self.stub.GetNotes(request)
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -48,6 +68,7 @@ def run_server():
     httpd = HTTPServer(server_address, MyHandler)
     print(f'Сервер запущен: http://localhost:{PORT}')
     httpd.serve_forever()
+
 
 if __name__ == '__main__':
     server_thread = threading.Thread(target=run_server)
