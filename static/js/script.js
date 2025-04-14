@@ -102,6 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         presentationFile = file;
         presentationFileInfo.textContent = `Презентация: ${file.name} (${formatSize(file.size)})`;
+        updateProcessButton();
     }
 
     function updateProcessButton() {
@@ -114,6 +115,8 @@ document.addEventListener('DOMContentLoaded', function() {
         progressContainer.style.display = 'block';
         processBtn.disabled = true;
         resultSection.style.display = 'none';
+        progressBar.style.width = '0%';
+        progressText.innerHTML = '<span class="spinner">⏳</span> Идёт обработка...';
         
         // Подготовка данных для отправки
         const formData = new FormData();
@@ -128,42 +131,63 @@ document.addEventListener('DOMContentLoaded', function() {
             formData.append('presentation_file', presentationFile);
         }
         
-        // Симуляция отправки на сервер
-        simulateProcessing();
+        // Отправка данных на сервер
+        fetch('/api/process', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Ошибка сервера');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'success') {
+                updateProgress(100);
+                setTimeout(() => finishProcessing(true, data.download_url), 500);
+            } else {
+                throw new Error(data.message || 'Ошибка обработки');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('error-text').textContent = error.message;
+            finishProcessing(false);
+        });
         
-        // В реальном приложении:
-        // fetch('/api/process', { method: 'POST', body: formData })
-        //     .then(response => response.json())
-        //     .then(handleServerResponse)
-        //     .catch(handleError);
+        // Прогресс бар (симуляция для демонстрации)
+        simulateProgress();
     }
 
-    function simulateProcessing() {
+    function simulateProgress() {
         let progress = 0;
         const interval = setInterval(() => {
-            progress += Math.random() * 15;
-            if (progress >= 100) {
-                progress = 100;
+            if (progress >= 90) {
                 clearInterval(interval);
-                setTimeout(() => finishProcessing(Math.random() > 0.2), 500);
+                return;
             }
+            progress += Math.random() * 15;
+            if (progress > 90) progress = 90;
             updateProgress(progress);
         }, 500);
     }
 
     function updateProgress(progress) {
         progressBar.style.width = `${progress}%`;
-        progressText.textContent = `Обработка: ${Math.round(progress)}%`;
+        progressText.innerHTML = `<span class="spinner">⏳</span> Обработка: ${Math.round(progress)}%`;
     }
 
-    function finishProcessing(success) {
+    function finishProcessing(success, downloadUrl = null) {
         progressContainer.style.display = 'none';
         resultSection.style.display = 'block';
         
         if (success) {
             document.getElementById('success-message').style.display = 'block';
             document.getElementById('error-message').style.display = 'none';
-            downloadBtn.href = '/download/result.pdf';
+            if (downloadUrl) {
+                downloadBtn.href = downloadUrl;
+            }
         } else {
             document.getElementById('success-message').style.display = 'none';
             document.getElementById('error-message').style.display = 'block';
