@@ -1,6 +1,4 @@
-from typing import Iterator
-import os
-from flask import Flask, send_from_directory, request, jsonify
+from flask import Flask, send_from_directory, request, jsonify, send_file
 import grpc
 from munch import munchify
 from yaml import safe_load
@@ -10,6 +8,7 @@ import webbrowser
 import threading
 from grpc import RpcError
 from werkzeug.exceptions import BadRequest
+from io import BytesIO
 
 
 # Load gRPC client config
@@ -36,47 +35,58 @@ def static_files(path):
 # API endpoint that talks to gRPC
 @app.route('/api/process', methods=['POST'])
 def process():
+    # 1) Validate upload
     if 'video' not in request.files:
         raise BadRequest('No video file part in request')
+
+    vid_file = request.files['video']
+    if not vid_file or vid_file.filename == '':
+        raise BadRequest('No selected file')
+
+    # 2) Generator that reads straight from the in‑memory upload
+    def video_stream(file_obj):
+        # rewind to start
+        try:
+            file_obj.seek(0)
+        except Exception:
+            pass
+
+        while True:
+            chunk = file_obj.read(4096)
+            if not chunk:
+                break
+            yield GetNotesRequest(video=chunk)
+
     try:
-        def video_stream(path):
-            with open(path, "rb") as f:
-                while True:
-                    chunk = f.read(4096)
-                    if not chunk:
-                        break
-                    yield GetNotesRequest(video=chunk)
+        # 3) Call gRPC with our in‑memory stream
+        responses = grpc_stub.GetNotes(video_stream(vid_file.stream), timeout=3600)
 
-        
-        vid_file = request.files['video']
-        responses: Iterator[GetNotesResponse] = grpc_stub.GetNotes(video_stream(vid_file.stream), timeout=3600)
+        # 4) Collect into an in‑memory buffer
+        pdf_buffer = BytesIO()
+        for resp in responses:
+            pdf_buffer.write(resp.notes)
+        pdf_buffer.seek(0)
 
-        # Collect streamed responses into a single result
-        notes_combined = b''.join(resp.notes for resp in responses)
-
-        # Optional: save the result
-        os.makedirs("download", exist_ok=True)
-        with open("download/result.pdf", "wb") as f:
-            f.write(notes_combined)
-
-        return jsonify({
-            "status": "success",
-            "message": "Обработка завершена",
-            "download_url": "/download/result.pdf"
-        })
+        # 5) Return as PDF download
+        return send_file(
+            pdf_buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name='result.pdf'
+        ), 200
 
     except RpcError as e:
-        # this will print to your console:
-        app.logger.error("gRPC RpcError ‑ code=%s, details=%s", e.code(), e.details())
-        # return those details to the HTTP client for visibility:
+        app.logger.error("gRPC RpcError code=%s, details=%s", e.code(), e.details())
+        app.logger.debug("gRPC debug_error_string:\n%s", e.debug_error_string())
         return jsonify({
-            "status": "error",
-            "grpc_code": e.code().name,
-            "message": e.details()
-        }), 500
+            'status': 'error',
+            'grpc_code': e.code().name,
+            'message': e.details()
+        }), 502
+
     except Exception:
-        app.logger.exception("General error in /api/process")
-        raise
+        app.logger.exception("Unexpected error in /api/process")
+        return jsonify({'status': 'error', 'message': 'Internal server error'}), 500
 
 # Optional: serve result.pdf if needed
 @app.route('/download/<filename>')
