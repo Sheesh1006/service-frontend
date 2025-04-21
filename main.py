@@ -90,4 +90,4 @@ if __name__ == '__main__':
     # open browser shortly after the server starts
     threading.Timer(1.0, open_browser).start()
     # this runs in the main thread, so reloader + signals work fine
-    app.run(port=8000, debug=True)
+    app.run(host="0.0.0.0",port=8000, debug=True)
