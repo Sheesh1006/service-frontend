@@ -36,10 +36,10 @@ def static_files(path):
 @app.route('/api/process', methods=['POST'])
 def process():
     # 1) Validate upload
-    if 'video' not in request.files:
+    if 'video_file' not in request.files:
         raise BadRequest('No video file part in request')
 
-    vid_file = request.files['video']
+    vid_file = request.files['video_file']
     if not vid_file or vid_file.filename == '':
         raise BadRequest('No selected file')
 
