@@ -9,6 +9,7 @@ from backend_service.backend_service_pb2 import GetNotesRequest, GetNotesRespons
 import webbrowser
 import threading
 from grpc import RpcError
+from werkzeug.exceptions import BadRequest
 
 
 # Load gRPC client config
@@ -35,6 +36,8 @@ def static_files(path):
 # API endpoint that talks to gRPC
 @app.route('/api/process', methods=['POST'])
 def process():
+    if 'video' not in request.files:
+        raise BadRequest('No video file part in request')
     try:
         def video_stream(path):
             with open(path, "rb") as f:
@@ -44,7 +47,9 @@ def process():
                         break
                     yield GetNotesRequest(video=chunk)
 
-        responses: Iterator[GetNotesResponse] = grpc_stub.GetNotes(video_stream('input_video.mp4'), timeout=3600)
+        
+        vid_file = request.files['video']
+        responses: Iterator[GetNotesResponse] = grpc_stub.GetNotes(video_stream(vid_file.stream), timeout=3600)
 
         # Collect streamed responses into a single result
         notes_combined = b''.join(resp.notes for resp in responses)
