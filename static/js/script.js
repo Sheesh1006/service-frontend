@@ -135,26 +135,40 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('/api/process', {
             method: 'POST',
             body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
+          })
+            .then(response => {
+              if (!response.ok) {
                 throw new Error('Ошибка сервера');
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.status === 'success') {
-                updateProgress(100);
-                setTimeout(() => finishProcessing(true, data.download_url), 500);
-            } else {
-                throw new Error(data.message || 'Ошибка обработки');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('error-text').textContent = error.message;
-            finishProcessing(false);
-        });
+              }
+              // parse the response as a PDF blob
+              return response.blob();
+            })
+            .then(pdfBlob => {
+              // mark progress complete
+              updateProgress(100);
+          
+              // wait a moment so the UI can update
+              setTimeout(() => {
+                // create a temporary download link and click it
+                const url = URL.createObjectURL(pdfBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'result.pdf';
+                document.body.appendChild(a);
+                a.click();
+                // cleanup
+                URL.revokeObjectURL(url);
+                a.remove();
+          
+                // signal finishProcessing success (no download_url needed now)
+                finishProcessing(true);
+              }, 500);
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              document.getElementById('error-text').textContent = error.message;
+              finishProcessing(false);
+            });
         
         // Прогресс бар (симуляция для демонстрации)
         simulateProgress();
