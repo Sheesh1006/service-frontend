@@ -8,6 +8,7 @@ from backend_service.backend_service_pb2_grpc import BackendServiceStub
 from backend_service.backend_service_pb2 import GetNotesRequest, GetNotesResponse
 import webbrowser
 import threading
+from grpc import RpcError
 
 
 # Load gRPC client config
@@ -43,7 +44,7 @@ def process():
                         break
                     yield GetNotesRequest(video=chunk)
 
-        responses: Iterator[GetNotesResponse] = grpc_stub.GetNotes(video_stream('input_video.mp4'))
+        responses: Iterator[GetNotesResponse] = grpc_stub.GetNotes(video_stream('input_video.mp4'), timeout=3600)
 
         # Collect streamed responses into a single result
         notes_combined = b''.join(resp.notes for resp in responses)
@@ -59,20 +60,29 @@ def process():
             "download_url": "/download/result.pdf"
         })
 
-    except Exception as e:
+    except RpcError as e:
+        # this will print to your console:
+        app.logger.error("gRPC RpcError ‑ code=%s, details=%s", e.code(), e.details())
+        # return those details to the HTTP client for visibility:
         return jsonify({
             "status": "error",
-            "message": str(e)
+            "grpc_code": e.code().name,
+            "message": e.details()
         }), 500
+    except Exception:
+        app.logger.exception("General error in /api/process")
+        raise
 
 # Optional: serve result.pdf if needed
 @app.route('/download/<filename>')
 def download_file(filename):
     return send_from_directory('download', filename)
 
-def run():
-    webbrowser.open_new_tab(f'http://localhost:8000')
-    app.run(port=8000, debug=False)
+def open_browser():
+    webbrowser.open_new_tab('http://localhost:8000')
 
 if __name__ == '__main__':
-    threading.Thread(target=run).start()
+    # open browser shortly after the server starts
+    threading.Timer(1.0, open_browser).start()
+    # this runs in the main thread, so reloader + signals work fine
+    app.run(port=8000, debug=True)
