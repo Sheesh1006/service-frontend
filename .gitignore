@@ -1,2 +1,5 @@
 venv
 *.yml
+test*
+*.mp4
+*.pdf

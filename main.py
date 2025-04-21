@@ -35,13 +35,15 @@ def static_files(path):
 @app.route('/api/process', methods=['POST'])
 def process():
     try:
-        def request_stream():
-            while True:
-                chunk = request.stream.read(1024 * 1024)  # 1MB
-                if not chunk:
-                    break
-                yield GetNotesRequest(video=chunk, presentation=b"")
-        responses: Iterator[GetNotesResponse] = grpc_stub.GetNotes(request_stream())
+        def video_stream(path):
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(4096)
+                    if not chunk:
+                        break
+                    yield GetNotesRequest(video=chunk)
+
+        responses: Iterator[GetNotesResponse] = grpc_stub.GetNotes(video_stream('input_video.mp4'))
 
         # Collect streamed responses into a single result
         notes_combined = b''.join(resp.notes for resp in responses)
