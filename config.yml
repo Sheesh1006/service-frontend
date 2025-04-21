@@ -1,0 +1,3 @@
+backend_client:
+  addr: '[::]:50052'
+
